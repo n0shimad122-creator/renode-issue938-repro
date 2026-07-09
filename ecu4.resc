@@ -1,0 +1,83 @@
+:name: 4-ECU STM32L552 — Renode issue #938 real-world reproduction
+:description: Runs four STM32L552 ECUs (FreeRTOS, FDCAN) on Renode v1.16.1.
+:              On unpatched Renode, process_interrupt Gate4 misses EXC_RETURN values
+:              below 0xFFFFFFE0 (e.g. 0xFFFFFFBC / 0xFFFFFFAC), causing IACCVIOL HardFault.
+:
+:   Prerequisites:
+:     1. Clone the upstream firmware project and build ECUx.hex (see README.md).
+:     2. Place ECUA.hex – ECUD.hex in the same directory as this file,
+:        OR override paths:  renode … -e "set bin_a @/path/to/ECUA.hex"
+:
+:   Run from this directory:
+:     UNPATCHED:  renode --disable-xwt -P 1240 -e "i @ecu4.resc"
+:     PATCHED:    renode_patched --disable-xwt -P 1240 -e "i @ecu4.resc"
+
+using sysbus
+
+# ── Firmware paths (override with -e "set bin_X @..." before loading) ────────
+$bin_a?=@ECUA.hex
+$bin_b?=@ECUB.hex
+$bin_c?=@ECUC.hex
+$bin_d?=@ECUD.hex
+
+# ── Shared CAN bus hub ────────────────────────────────────────────────────────
+emulation CreateCANHub "canBus" true
+
+# ── ECU A ─────────────────────────────────────────────────────────────────────
+mach create "ECU_A"
+machine LoadPlatformDescription @stm32l552_repro.repl
+connector Connect fdcan1 canBus
+
+# ── ECU B ─────────────────────────────────────────────────────────────────────
+mach create "ECU_B"
+machine LoadPlatformDescription @stm32l552_repro.repl
+connector Connect fdcan1 canBus
+
+# ── ECU C ─────────────────────────────────────────────────────────────────────
+mach create "ECU_C"
+machine LoadPlatformDescription @stm32l552_repro.repl
+connector Connect fdcan1 canBus
+
+# ── ECU D ─────────────────────────────────────────────────────────────────────
+mach create "ECU_D"
+machine LoadPlatformDescription @stm32l552_repro.repl
+connector Connect fdcan1 canBus
+
+# ── Time synchronisation ──────────────────────────────────────────────────────
+emulation SetGlobalQuantum "0.01"
+
+# ── Reset macro ───────────────────────────────────────────────────────────────
+macro reset
+"""
+    mach set "ECU_A"
+    sysbus LoadHEX $bin_a
+    cpu VectorTableOffset 0x08000000
+    cpu PerformanceInMips 80
+    sysbus WriteDoubleWord 0x4000A418 0x00000003
+    sysbus WriteDoubleWord 0x4000A4C0 0x03000000
+
+    mach set "ECU_B"
+    sysbus LoadHEX $bin_b
+    cpu VectorTableOffset 0x08000000
+    cpu PerformanceInMips 80
+    sysbus WriteDoubleWord 0x4000A418 0x00000003
+    sysbus WriteDoubleWord 0x4000A4C0 0x03000000
+
+    mach set "ECU_C"
+    sysbus LoadHEX $bin_c
+    cpu VectorTableOffset 0x08000000
+    cpu PerformanceInMips 80
+    sysbus WriteDoubleWord 0x4000A418 0x00000003
+    sysbus WriteDoubleWord 0x4000A4C0 0x03000000
+
+    mach set "ECU_D"
+    sysbus LoadHEX $bin_d
+    cpu VectorTableOffset 0x08000000
+    cpu PerformanceInMips 80
+    sysbus WriteDoubleWord 0x4000A418 0x00000003
+    sysbus WriteDoubleWord 0x4000A4C0 0x03000000
+"""
+
+runMacro $reset
+
+echo "4-ECU loaded. Type 'start' to run."

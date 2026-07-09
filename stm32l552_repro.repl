@@ -1,0 +1,223 @@
+// SPDX-License-Identifier: MIT
+//
+// STM32L552 platform description — Renode v1.16.1 compatible.
+//
+// Based on the upstream Renode platforms/cpus/stm32l552.repl
+// (MIT License, Copyright (c) Antmicro <www.antmicro.com>)
+// https://github.com/renode/renode/blob/master/platforms/cpus/stm32l552.repl
+// with additions for target-specific peripheral configuration
+// (timer frequencies, RCC tags, PWR tags, etc.).
+//
+// Duplicate declarations removed for v1.16.1 compatibility:
+//   - sram2, fdcan1 (MCAN variant), fdcan_mram: now provided by base stm32l552.repl
+//   - rcc_cr (Python peripheral): replaced by STM32L5_RCC in v1.16.1 base
+//   - tim1 address redeclaration: replaced by frequency-only override
+
+using "platforms/cpus/stm32l552.repl"
+
+// Override systickFrequency to match actual SYSCLK = 80 MHz.
+// The firmware uses HSE (10 MHz) + PLL (PLLM=1, PLLN=16, PLLR=2) → 80 MHz.
+nvic:
+    systickFrequency: 80000000
+
+// TIM6 IRQ fix: base stm32l552.repl wires timer6 → nvic@43, but STM32L552
+// TIM6_DAC_IRQn = 49.  When TIM6 fires at the wrong position, the CPU jumps
+// to Default_Handler (infinite loop, priority 0) which blocks SysTick
+// (priority 0xE0) → xTaskIncrementTick never called → all FreeRTOS tasks frozen.
+// Also raise frequency from the generic 10 MHz to actual PCLK1 = 80 MHz so the
+// PSC/ARR values programmed by the firmware produce the correct timer period.
+timer6:
+    0 -> nvic@49
+    frequency: 80000000
+
+// TIM7 IRQ fix: base has timer7 → nvic@44; STM32L552 TIM7_IRQn = 50.
+timer7:
+    0 -> nvic@50
+    frequency: 80000000
+
+// TIM1 frequency override: base v1.16.1 defines timer1 at 0x40012C00 with frequency=10MHz.
+// The HAL timebase uses TIM1_UP (nvic@42) at PSC=79, ARR=999 → 1ms at 80MHz.
+// Override frequency only; do not redeclare (v1.16.1 address-conflict detection).
+timer1:
+    frequency: 80000000
+
+// v1.16.1 base provides rcc: Miscellaneous.STM32L5_RCC @ sysbus 0x40021000
+// which handles PLL ON→RDY bit mirroring natively. rcc_cr Python peripheral removed.
+
+sysbus:
+    init:
+        // ── Tags for peripherals not modelled by v1.16.1 base stm32l552.repl ──
+        // Note: RCC (0x40021000) is now STM32L5_RCC model in v1.16.1 base — Tags here
+        //       are overridden by the real model but kept for reference.
+        // RCC_CFGR: SW = SWS = PLL using STM32L552's 2-bit fields (bits[1:0]=SW, bits[3:2]=SWS).
+        // SW=0b11=PLL (bits 1:0), SWS=0b11=PLL (bits 3:2) → 0b1111 = 0xF for clock fields.
+        // Keep HPRE=0b0001 (no AHB divide) at bits[7:4] → full value = 0x1F.
+        // HAL_RCC_ClockConfig() and HAL_RCCEx_PeriphCLKConfig() check (CFGR & 0xC) == 0xC
+        // to determine if PLL is already the system clock; 0x1F satisfies this.
+        Tag <0x40021008 4> "RCC_CFGR" 0x1F
+        // Cover remaining RCC block (0x400 bytes total); subtags above take priority
+        // for their specific 4-byte windows
+        Tag <0x40021004 4> "RCC_ICSCR1"
+        // RCC_PLLCFGR: PLLSRC=HSE(11), PLLM=1(bits[7:4]=0), PLLN=16(bits[14:8]=0x10),
+        // PLLREN(bit24)=0, PLLR=2(bits[26:25]=0), PLLQ=4(bits[22:21]=1), PLLP=7(bits[31:27]=7)
+        // → SYSCLK = 10MHz(HSE)/1*16/2 = 80 MHz.
+        // HAL validation at 0x8010b18 compares these fields against the OscInitStruct.
+        Tag <0x4002100C 4> "RCC_PLLCFGR" 0x38201003
+        Tag <0x40021010 4> "RCC_PLLSAI1CFGR"
+        Tag <0x40021014 4> "RCC_PLLSAI2CFGR"
+        Tag <0x40021018 4> "RCC_CIER"
+        Tag <0x4002101C 4> "RCC_CIFR"
+        Tag <0x40021020 4> "RCC_CICR"
+        Tag <0x40021024 4> "RCC_reserved"
+        Tag <0x40021028 4> "RCC_AHB1RSTR"
+        Tag <0x4002102C 4> "RCC_AHB2RSTR1"
+        Tag <0x40021030 4> "RCC_AHB2RSTR2"
+        Tag <0x40021034 4> "RCC_AHB3RSTR"
+        Tag <0x40021040 4> "RCC_APB1RSTR1"
+        Tag <0x40021044 4> "RCC_APB1RSTR2"
+        Tag <0x40021048 4> "RCC_APB2RSTR"
+        Tag <0x4002104C 4> "RCC_APB3RSTR"
+        Tag <0x40021050 4> "RCC_AHB1ENR"
+        Tag <0x40021054 4> "RCC_AHB2ENR1"
+        Tag <0x40021058 4> "RCC_AHB2ENR2"
+        Tag <0x4002105C 4> "RCC_AHB3ENR"
+        Tag <0x40021060 4> "RCC_APB1ENR1"
+        Tag <0x40021064 4> "RCC_APB1ENR2"
+        Tag <0x40021068 4> "RCC_APB2ENR"
+        Tag <0x4002106C 4> "RCC_APB3ENR"
+        Tag <0x40021070 4> "RCC_AHB1SMENR"
+        Tag <0x40021074 4> "RCC_AHB2SMENR1"
+        Tag <0x40021078 4> "RCC_AHB2SMENR2"
+        Tag <0x4002107C 4> "RCC_AHB3SMENR"
+        Tag <0x40021080 4> "RCC_APB1SMENR1"
+        Tag <0x40021084 4> "RCC_APB1SMENR2"
+        Tag <0x40021088 4> "RCC_APB2SMENR"
+        Tag <0x4002108C 4> "RCC_APB3SMENR"
+        Tag <0x40021090 4> "RCC_CCIPR1"
+        // RCC_CCIPR2: bit 0 = clock source select, bit 1 = clock ready.
+        // HAL_RCCEx_PeriphCLKConfig() writes bit 0 then polls bit 1 with a 7ms timeout.
+        // Pre-setting bit 1 makes the "already ready" fast-path at 0x8010620 branch over the loop.
+        Tag <0x40021094 4> "RCC_CCIPR2" 0x2
+        // RCC_CCIPR3: same pattern as CCIPR2 — pre-set bit 1 (ready) so HAL clock-source poll exits.
+        Tag <0x40021098 4> "RCC_CCIPR3" 0x2
+        Tag <0x400210A0 4> "RCC_BDCR"
+        Tag <0x400210A4 4> "RCC_CSR"
+        Tag <0x400210A8 4> "RCC_SECCFGR"
+        Tag <0x400210AC 4> "RCC_PRIVCFGR"
+
+        // PWR_SR1: HAL_PWREx_ControlVoltageScaling() at 0x8010038 checks (SR1 & 0x9000) != 0
+        // before attempting any VOS change. On STM32L552 these are SMPS-related ready bits
+        // (bit 15 = SMPSHPRDY, bit 12 = SMPSBYPRDY); they are set by hardware in normal
+        // operation but 0 after cold boot in simulation. Setting 0x9000 satisfies the check.
+        // SR2 (0x40007014, bit 10 = PVDO) is covered by the PWR parent tag (returns 0),
+        // which causes the VOS-change wait loop to exit immediately → returns HAL_OK.
+        Tag <0x40007000 0x400> "PWR"
+        // PWR_CR1 bit 8 = DBP (Disable backup domain write protection).
+        // HAL_RCC_OscConfig LSI path at 0x8010664 checks DBP before accessing backup registers.
+        // Pre-setting DBP=1 skips the enable-and-poll loop at 0x8010a24 that would time out
+        // because the Tag ignores writes and the poll never sees bit 8 go to 1.
+        Tag <0x40007000 4> "PWR_CR1" 0x100
+        Tag <0x40007010 4> "PWR_SR1" 0x9000
+
+        // GPIO port regions (returned as tags, no real GPIOPort model for L552)
+        Tag <0x42020000 0x400> "gpioPortA"
+        Tag <0x42020400 0x400> "gpioPortB"
+        Tag <0x42020800 0x400> "gpioPortC"
+        Tag <0x42020C00 0x400> "gpioPortD"
+        Tag <0x42021000 0x400> "gpioPortE"
+        Tag <0x42021400 0x400> "gpioPortF"
+        Tag <0x42021800 0x400> "gpioPortG"
+        Tag <0x42021C00 0x400> "gpioPortH"
+
+        // DWT (Data Watchpoint and Trace)
+        Tag <0xE0001000 0xFFB> "DWT"
+
+        // ── Additional Tags for ECU peripherals ──
+
+        // 0x40006400-0x400067FF: NOT FDCAN on STM32L552 (FDCAN is on APB1 FZ2 at 0x4000A400).
+        // These addresses appear to be reserved/unused in APB1 FZ1 on STM32L552.
+        Tag <0x40006400 0x400> "APB1_FZ1_RSVD_6400"
+        Tag <0x40006800 0x400> "APB1_FZ1_RSVD_6800"
+
+        // FDCAN1 Clock Calibration Unit on APB1 FZ2
+        // (gap between FDCAN1 control registers at 0x4000A400 and message RAM at 0x4000AC00)
+        Tag <0x4000A800 0x400> "FDCAN_CCU"
+
+        // 0x4000AC00: fdcanRAM (ArrayMemory, defined in v1.16.1 base, size=0x400)
+
+        // USB FS device registers
+        Tag <0x40005C00 0x400> "USB_FS"
+        // CRS (Clock Recovery System, used with USB SOF)
+        Tag <0x40006000 0x400> "CRS"
+
+        // DAC1
+        Tag <0x40007400 0x400> "DAC1"
+        // OPAMP
+        Tag <0x40007800 0x400> "OPAMP"
+        // LPTIM1
+        Tag <0x40007C00 0x400> "LPTIM1"
+        // LPTIM2 / LPTIM3 (APB3)
+        Tag <0x40009400 0x400> "LPTIM2"
+        Tag <0x40009800 0x400> "LPTIM3"
+        // UCPD1 (USB Type-C PD) — placed after SRAMCAN end (0x4000D400)
+        Tag <0x4000DC00 0x400> "UCPD1"
+        // NOTE: TAMP at 0x4000B000 removed — that region is SRAMCAN (fdcan_mram ArrayMemory)
+        // on STM32L552. TAMP is actually in the RTC domain at 0x40002C00 on this MCU.
+
+        // I2C2, I2C3 (I2C1 is in base .repl)
+        Tag <0x40005800 0x400> "I2C2"
+        Tag <0x40008800 0x400> "I2C3"
+
+        // IWDG (Independent Watchdog)
+        Tag <0x40003000 0x400> "IWDG"
+        // WWDG (Window Watchdog)
+        Tag <0x40002C00 0x400> "WWDG"
+
+        // TIM1 is modelled as timer1 (defined in v1.16.1 base, frequency overridden to 80MHz above).
+        // UpdateInterrupt -> nvic@42 (TIM1_UP_IRQn) already wired in base.
+
+        // ICACHE (Instruction Cache, AHB1) — accessed during firmware startup
+        // ICACHE_SR (offset 4): BSYENDF (bit 1) = 1 so any HAL_ICACHE_WaitForInvalidateComplete
+        // poll exits immediately. BUSYF (bit 0) = 0 (not busy).
+        Tag <0x40030400 0x400> "ICACHE"
+        Tag <0x40030404 4> "ICACHE_SR" 0x2
+
+        // Flash interface registers
+        Tag <0x40022000 0x400> "FLASH_CTRL"
+        // FLASH_ACR (offset 0x00): LATENCY=3 (3 wait states for 80 MHz).
+        // HAL_RCC_ClockConfig() programs LATENCY=3 (FLatency=3), then reads back to verify;
+        // pre-setting 3 avoids the "increase latency" write and satisfies the "decrease latency"
+        // check at 0x8010316 (3 <= 3 → skip), so no write/readback mismatch occurs.
+        Tag <0x40022000 4> "FLASH_ACR" 0x03
+        // CRC
+        Tag <0x40023000 0x400> "CRC"
+        // TSC (Touch Sensing Controller)
+        Tag <0x40024000 0x400> "TSC"
+        // SYSCFG
+        Tag <0x40010000 0x400> "SYSCFG"
+
+        // ADC1/ADC2 common + instances (AHB2)
+        // ADC1: 0x42028000, ADC2: 0x42028100, Common: 0x42028300 — one block
+        Tag <0x42028000 0x400> "ADC"
+        // ADC1_ISR (offset 0): ADRDY (bit 0) = 1; HAL_ADC_Enable polls this for 2ms after
+        // setting ADEN. Returning 0 → 2ms busy-loop then HAL_ERROR → Error_Handler.
+        Tag <0x42028000 4> "ADC1_ISR" 0x1
+        // ADC1_CR (offset 8): ADVREGEN (bit 28) = 1; HAL_ADC_Init checks this after enabling
+        // the voltage regulator. Returning 0 causes a readback-fail at 0x8004c46 → Error_Handler.
+        // Bit 28 = ADVREGEN; no other bits needed — ADEN (bit 0) must stay 0.
+        Tag <0x42028008 4> "ADC1_CR" 0x10000000
+
+        // AES hardware accelerator (AHB2 secure/non-secure)
+        Tag <0x420C0000 0x400> "AES"
+        // HASH
+        Tag <0x420C0400 0x400> "HASH"
+        // RNG (Random Number Generator)
+        Tag <0x420C0800 0x400> "RNG"
+        // RNG_SR (offset 4): DRDY=1 so HAL_RNG_GenerateRandomNumber poll at 0x8011458 exits.
+        // RNG_DR (offset 8) returns 0 (valid random value for simulation).
+        Tag <0x420C0804 4> "RNG_SR" 0x1
+        // PKA (Public Key Accelerator)
+        Tag <0x420C2000 0x400> "PKA"
+
+        // OCTOSPI1 registers (if present)
+        Tag <0xA0001000 0x1000> "OCTOSPI1_REG"

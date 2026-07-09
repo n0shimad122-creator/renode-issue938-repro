@@ -1,0 +1,41 @@
+MIT License
+
+Copyright (c) 2026 repro938 Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+This repository contains only original files (MIT) and platform configuration
+derived from the Renode project (MIT, Copyright (c) Antmicro):
+  https://github.com/renode/renode/blob/master/platforms/cpus/stm32l552.repl
+
+It does NOT include any firmware binary from the upstream project.  The firmware must be built
+independently from the upstream firmware project:
+  https://github.com/ToyotaInfoTech/RAMN
+
+The upstream firmware source carries the following licenses:
+  - Upstream-project-specific code: BSD 3-Clause (Toyota InfoTech)
+  - STM32 USB Middleware: SLA0044 (ST Microelectronics)
+  - CMSIS: Apache-2.0 (ARM Ltd)
+  - FreeRTOS: MIT (Amazon)
+  - STM32L5 HAL: BSD 3-Clause (ST Microelectronics)
+
+Users are responsible for complying with these licenses when building and
+using the upstream firmware.
